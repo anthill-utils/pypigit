@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>{{ package_name }}</title>
+    </head>
+    <body>
+        <h1>{{ package_name }}</h1>
+        {% for version, link in versions.items() %}
+        <a href="{{ link }}">{{ version }}</a>
+        {% end %}
+    </body>
+</html>

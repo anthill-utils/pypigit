@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Simple Index</title>
+    </head>
+    <body>
+        <h1>Simple Index</h1>
+        {% for repo_name in repositories %}
+        <a href="/simple/{{ repo_name }}/">{{ repo_name }}</a>
+        {% end %}
+    </body>
+</html>
