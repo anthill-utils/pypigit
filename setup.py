@@ -3,8 +3,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='pypigit',
-    version='0.1.0',
-    description='A simple PyPi-like server that uses git repositories as a source of python packages',
+    version='0.2',
+    description='A simple PyPi-like server that automatically generates python packages from git tags',
     author='desertkun',
     license='MIT',
     author_email='desertkun@gmail.com',
@@ -12,8 +12,9 @@ setup(
     packages=find_packages(),
     zip_safe=False,
     install_requires=[
-        "tornado==5.1.1",
-        "GitPython==2.1.7",
-        "giturlparse.py==0.0.5"
+        "tornado>=5.0",
+        "GitPython>=2.1.7",
+        "giturlparse.py>=0.0.5",
+        "PyYAML>=3.13"
     ]
 )

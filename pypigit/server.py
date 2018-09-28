@@ -11,7 +11,7 @@ import os
 define("port", type=int, default="9498", help="Listen port")
 define("cache-directory", type=str, default=".pypigit", help="Cache directory")
 define("public-url", type=str, default="http://localhost:9498", help="Public URL directory")
-define("repos", type=str, help="JSON file with list of git remotes")
+define("repos", type=str, help="YAML file with list of git remotes")
 
 
 class PyPiGITServer(Application):

@@ -1,5 +1,6 @@
 
 from tornado.web import RequestHandler, HTTPError
+from . repos import GitRepositoryError
 
 
 class MainHandler(RequestHandler):
@@ -20,7 +21,10 @@ class PackageHandler(RequestHandler):
         if repo is None:
             raise HTTPError(404, "No such package")
 
-        versions = await repo.list_versions()
+        try:
+            versions = await repo.list_versions()
+        except GitRepositoryError as e:
+            raise HTTPError(e.code, e.message)
 
         self.render("templates/package_versions.html", package_name=package_name, versions=versions)
 
