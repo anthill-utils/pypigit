@@ -3,6 +3,12 @@ PyPiGit
 
 A simple PyPi-like server that automatically generates python packages from git tags.
 
+Installation
+------------
+```bash
+pip install pypigit
+```
+
 How To
 ------
 
