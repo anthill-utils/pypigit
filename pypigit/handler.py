@@ -1,11 +1,6 @@
 
 from tornado.web import RequestHandler, HTTPError
-from . repos import GitRepositoryError
-
-
-class MainHandler(RequestHandler):
-    def get(self):
-        self.write("hello")
+from . repos import GitRepositoryError, CacheRedirectException
 
 
 class IndexHandler(RequestHandler):
@@ -37,4 +32,15 @@ class DownloadPackageHandler(RequestHandler):
         if repo is None:
             raise HTTPError(404, "No such package")
 
-        self.redirect(await repo.download(package_version))
+        try:
+            package = await repo.download(package_version)
+        except CacheRedirectException as e:
+            self.redirect(e.url)
+        except GitRepositoryError as e:
+            raise HTTPError(e.code, e.message)
+        else:
+            self.set_header('Content-Type', 'application/octet-stream')
+            self.set_header('Content-Disposition',
+                            'attachment; filename={0}-{1}.tar.gz'.format(package_name, package_version))
+            self.write(package)
+            self.finish()

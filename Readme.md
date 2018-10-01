@@ -57,3 +57,38 @@ default_ssh_key: |
   -----END RSA PRIVATE KEY-----
     
 ```
+
+Developer Use
+-------------
+
+Branches with `dev0` in name (for example, `0.1.dev0`) will be treated specially: `pypigit` will automatically
+increment a new build version (for example, `0.1.dev1`, `0.1.dev2`, `0.1.dev3` etc) for each commit hash change.
+
+All you have to do is:
+
+```
+pip install --extra-index-url http://localhost:9498/simple --upgrade --no-cache-dir "repo-name>=0.1.dev"
+```
+
+It will install a new package iteration each time the last commit hash has changed.
+Only [PEP440](https://www.python.org/dev/peps/pep-0440/) compliant branch names will be exported.
+
+
+Note, this can only work if you use module `pypigit_version` in your project to 
+version the packages automatically:
+
+```
+
+setup(
+    ...
+    setup_requires=["pypigit-version"],
+    git_version="0.1.0",
+    ...
+)
+```
+
+It will try to obtain a version automatically:
+* If the repo's current tag matches PEP440, it will be used
+* If the repo's current branch matches PEP440, it will be used
+* If `PYPIGIT_VERSION` is defined (for auto-incrementing), it will be used
+* Otherwise, it will fallback to the `git_version` value.

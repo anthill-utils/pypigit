@@ -7,6 +7,7 @@ from . import handler
 from . repos import GitRepositories
 
 import os
+import logging
 
 define("port", type=int, default="9498", help="Listen port")
 define("cache-directory", type=str, default=".pypigit", help="Cache directory")
@@ -26,10 +27,11 @@ class PyPiGITServer(Application):
 
         self.repos = GitRepositories(options.repos, options.cache_directory, options.public_url)
 
+        logging.info("Serving on {0}".format(options.public_url))
+
 
 def make_app():
     return PyPiGITServer([
-        (r"/", handler.MainHandler),
         (r"/simple/?", handler.IndexHandler),
         (r"/simple/([a-zA-Z0-9_-]+)/?", handler.PackageHandler),
         (r"/download/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)-([a-zA-Z0-9_\.-]+)\.tar\.gz", handler.DownloadPackageHandler),

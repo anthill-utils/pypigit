@@ -1,14 +1,16 @@
-
 from . import run_on_executor, PrivateSSHKeyContext
 
 import giturlparse
 from concurrent.futures import ThreadPoolExecutor
+from subprocess import run, PIPE
 import git
 import os
 import os.path
-import subprocess
 import stat
 import yaml
+import re
+import json
+import logging
 
 from shutil import copyfile, rmtree
 from tempfile import TemporaryDirectory
@@ -37,6 +39,7 @@ class GitRepositoryError(Exception):
 
 class GitRepository(object):
     executor = ThreadPoolExecutor()
+    version_validator = re.compile(r"^(\d+!)?(\d+)(\.\d+)+([\.\_\-])?(\.?dev\d*)?$")
 
     def __init__(self, settings, cache_directory, public_url, default_private_key=None):
 
@@ -66,15 +69,63 @@ class GitRepository(object):
             g = git.cmd.Git()
             with git_ssh_environment(g, ssh_private_key_filename=ssh_private_key_filename):
                 try:
-                    tags = g.ls_remote(self.repo_url, tags=True)
+                    tags = g.ls_remote(self.repo_url)
                 except git.GitCommandError as e:
                     raise GitRepositoryError(500, "Failed to fetch remote repository: {0}".format(e.status))
                 result = {}
+                skipped = []
                 for line in tags.split('\n'):
                     ref_hash, ref = line.split('\t')
-                    tag_name = ref.split("/")[-1]
-                    tar_name = self.package_tar(tag_name)
+                    ref_split = ref.split("/")
+                    if len(ref_split) != 3:
+                        continue
+                    refs, kind, name = ref_split
+
+                    version_info = re.match(GitRepository.version_validator, name)
+                    if not version_info:
+                        if name not in ["master", "HEAD"]:
+                            skipped.append(name)
+                        continue
+
+                    if kind == "heads":
+                        postfix = version_info.group(5)
+                        # if there's a branch that match PEP440 and dev, auto-generate number
+                        if postfix and postfix == "dev0":
+                            cache_file = os.path.join(self.cache_directory, ".hashes")
+                            if os.path.isfile(cache_file):
+                                with open(cache_file, "r") as f:
+                                    cache_data = json.load(f)
+
+                            else:
+                                cache_data = {}
+
+                            branch_cache = cache_data.get(name, None)
+                            if branch_cache is None:
+                                branch_cache = {}
+                                cache_data[name] = branch_cache
+
+                            last_version = branch_cache.get("v", 0)
+                            last_hash = branch_cache.get("h", None)
+
+                            if last_hash == ref_hash:
+                                new_version = last_version
+                            else:
+                                new_version = last_version + 1
+                                branch_cache["v"] = new_version
+                                branch_cache["h"] = ref_hash
+                                with open(cache_file, "w") as f:
+                                    json.dump(cache_data, f)
+
+                            name = (version_info.group(1) or '') + (version_info.group(2) or '') + \
+                                   (version_info.group(3) or '') + (version_info.group(4) or '') + "dev" + \
+                                   str(new_version)
+
+                    tar_name = self.package_tar(name)
                     result[tar_name] = self.public_url + "/download/" + repo_name + "/" + tar_name
+                if skipped:
+                    logging.warning("{0} skipped versions, because they do not comply PEP440: {1}".format(
+                        repo_name, ", ".join(skipped)
+                    ))
                 return result
 
     def get_cache_url(self, package_version):
@@ -85,14 +136,29 @@ class GitRepository(object):
 
     @run_on_executor
     def download(self, package_version):
-        repo_name = self.name()
-        if not os.path.isdir(self.cache_directory):
-            os.mkdir(self.cache_directory)
+        cache = True
+        version_info = re.match(GitRepository.version_validator, package_version)
+        original_version = package_version
+        if version_info:
+            postfix = version_info.group(5)
+            if postfix and postfix.startswith("dev"):
+                original_version = package_version
+                package_version = (version_info.group(1) or '') + (version_info.group(2) or '') + \
+                                  (version_info.group(3) or '') + (version_info.group(4) or '') + "dev0"
+                cache = False
 
-        cache_url = self.get_cache_url(package_version)
-        tar_name = self.package_tar(package_version)
-        if os.path.isfile(os.path.join(self.cache_directory, tar_name)):
-            return cache_url
+        repo_name = self.name()
+        tar_name = self.package_tar(original_version)
+
+        if cache:
+            if not os.path.isdir(self.cache_directory):
+                os.mkdir(self.cache_directory)
+
+            cache_url = self.get_cache_url(package_version)
+            if os.path.isfile(os.path.join(self.cache_directory, tar_name)):
+                return cache_url
+        else:
+            cache_url = None
 
         # noinspection PyUnusedLocal
         def set_rw(operation, name, exc):
@@ -103,20 +169,56 @@ class GitRepository(object):
         with TemporaryDirectory(prefix="pypigit") as temp_dir:
             g = git.Git(temp_dir)
 
-            with PrivateSSHKeyContext(ssh_private_key=self.private_key) as ssh_private_key_filename:
-                with git_ssh_environment(g, ssh_private_key_filename=ssh_private_key_filename):
-                    g.clone(self.repo_url, branch=package_version, depth=1)
+            try:
+                with PrivateSSHKeyContext(ssh_private_key=self.private_key) as ssh_private_key_filename:
+                    with git_ssh_environment(g, ssh_private_key_filename=ssh_private_key_filename):
+                        g.clone(self.repo_url, branch=package_version, depth=1)
 
-            build = os.path.join(temp_dir, repo_name)
-            p = subprocess.Popen("python setup.py sdist", stdout=subprocess.PIPE, shell=True, cwd=build)
-            p.communicate()
+                build = os.path.join(temp_dir, repo_name)
 
-            copyfile(os.path.join(build, "dist", tar_name), os.path.join(self.cache_directory, tar_name))
+                env = os.environ.copy()
+                env["PYPIGIT_VERSION"] = original_version
 
-            # noinspection PyTypeChecker
-            rmtree(build, onerror=set_rw)
+                p = run("python setup.py --version", stdout=PIPE, shell=True, cwd=build, env=env)
 
-        return cache_url
+                if p.returncode != 0:
+                    raise GitRepositoryError(400, "Package {0} of {1} has failed to provide version".format(
+                        repo_name, original_version
+                    ))
+
+                py_version = p.stdout.decode().splitlines()[-1]
+                if py_version != original_version:
+                    raise GitRepositoryError(400, "Package {0} of tag {1} contains version {2} instead".format(
+                        repo_name, package_version, py_version
+                    ))
+
+                with open(os.path.join(build, "version.txt"), "w") as f:
+                    f.write(py_version)
+
+                p = run("python setup.py sdist", stdout=PIPE, shell=True, cwd=build, env=env)
+
+                if p.returncode != 0:
+                    raise GitRepositoryError(400, "Package {0} of {1} build has failed with error code {2}".format(
+                        repo_name, original_version, p.returncode
+                    ))
+
+                if not os.path.isfile(os.path.join(build, "dist", tar_name)):
+                    raise GitRepositoryError(400, "Package {0} of version {1} did not produce dist {2}".format(
+                        repo_name, original_version, tar_name
+                    ))
+
+                if cache:
+                    copyfile(os.path.join(build, "dist", tar_name), os.path.join(self.cache_directory, tar_name))
+                else:
+                    with open(os.path.join(build, "dist", tar_name), 'rb') as f:
+                        return f.read()
+
+            finally:
+                # noinspection PyTypeChecker
+                rmtree(build, onerror=set_rw)
+
+        if cache:
+            raise CacheRedirectException(cache_url)
 
     def name(self):
         return self.parsed_url.repo
@@ -139,10 +241,10 @@ class GitRepositories(object):
         self.repositories = {
             repo.name(): repo
             for repo in map(
-                lambda settings: GitRepository(
-                    settings, cache_directory, public_url, default_private_key=default_private_key
-                ), repos["repositories"]
-            )
+            lambda settings: GitRepository(
+                settings, cache_directory, public_url, default_private_key=default_private_key
+            ), repos["repositories"]
+        )
         }
 
     def find(self, name):

@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pypigit',
-    version='0.2.3',
+    version='0.2.4',
     description='A simple PyPi-like server that automatically generates python packages from git tags',
     author='desertkun',
     license='MIT',
