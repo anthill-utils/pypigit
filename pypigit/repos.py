@@ -37,6 +37,17 @@ class GitRepositoryError(Exception):
         self.message = message
 
 
+python_path = "python"
+
+if "VIRTUAL_ENV" in os.environ:
+    virtual_env = os.environ["VIRTUAL_ENV"]
+    if os.path.isdir(virtual_env):
+        for test in ["{0}/bin/python", "{0}/Scripts/python.exe"]:
+            if os.path.isfile(test.format(virtual_env)):
+                python_path = test.format(virtual_env)
+                break
+
+
 class GitRepository(object):
     executor = ThreadPoolExecutor()
     version_validator = re.compile(r"^(\d+!)?(\d+)(\.\d+)+([\.\_\-])?(\.?dev\d*)?$")
@@ -91,6 +102,9 @@ class GitRepository(object):
                         postfix = version_info.group(5)
                         # if there's a branch that match PEP440 and dev, auto-generate number
                         if postfix and postfix == "dev0":
+                            if not os.path.isdir(self.cache_directory):
+                                os.mkdir(self.cache_directory)
+
                             cache_file = os.path.join(self.cache_directory, ".hashes")
                             if os.path.isfile(cache_file):
                                 with open(cache_file, "r") as f:
@@ -179,7 +193,7 @@ class GitRepository(object):
                 env = os.environ.copy()
                 env["PYPIGIT_VERSION"] = original_version
 
-                p = run("python setup.py --version", stdout=PIPE, shell=True, cwd=build, env=env)
+                p = run("{0} setup.py --version".format(python_path), stdout=PIPE, shell=True, cwd=build, env=env)
 
                 if p.returncode != 0:
                     raise GitRepositoryError(400, "Package {0} of {1} has failed to provide version".format(
@@ -192,10 +206,7 @@ class GitRepository(object):
                         repo_name, package_version, py_version
                     ))
 
-                with open(os.path.join(build, "version.txt"), "w") as f:
-                    f.write(py_version)
-
-                p = run("python setup.py sdist", stdout=PIPE, shell=True, cwd=build, env=env)
+                p = run("{0} setup.py sdist".format(python_path), stdout=PIPE, shell=True, cwd=build, env=env)
 
                 if p.returncode != 0:
                     raise GitRepositoryError(400, "Package {0} of {1} build has failed with error code {2}".format(
