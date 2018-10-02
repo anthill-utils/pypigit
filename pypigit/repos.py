@@ -64,7 +64,7 @@ class GitRepository(object):
         self.public_url = public_url
 
     @run_on_executor
-    def list_versions(self):
+    def list_versions(self, just_versions=False):
         repo_name = self.name()
         with PrivateSSHKeyContext(ssh_private_key=self.private_key) as ssh_private_key_filename:
             g = git.cmd.Git()
@@ -73,7 +73,7 @@ class GitRepository(object):
                     tags = g.ls_remote(self.repo_url)
                 except git.GitCommandError as e:
                     raise GitRepositoryError(500, "Failed to fetch remote repository: {0}".format(e.status))
-                result = {}
+                result = [] if just_versions else {}
                 skipped = []
                 for line in tags.split('\n'):
                     ref_hash, ref = line.split('\t')
@@ -125,7 +125,11 @@ class GitRepository(object):
                                    str(new_version)
 
                     tar_name = self.package_tar(name)
-                    result[tar_name] = self.public_url + "/download/" + repo_name + "/" + tar_name
+
+                    if just_versions:
+                        result.append(name)
+                    else:
+                        result[tar_name] = self.public_url + "/download/" + repo_name + "/" + tar_name
                 if skipped:
                     logging.warning("{0} skipped versions, because they do not comply PEP440: {1}".format(
                         repo_name, ", ".join(skipped)

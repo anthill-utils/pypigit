@@ -2,10 +2,55 @@
 from tornado.web import RequestHandler, HTTPError
 from . repos import GitRepositoryError, CacheRedirectException
 
+from xmlrpc.client import loads as rpc_loads
+from xmlrpc.client import dumps as rpc_dumps
+
 
 class IndexHandler(RequestHandler):
     def get(self):
         self.render("templates/simple_index.html", repositories=self.application.repos.list())
+
+    async def call_search(self, specs, operator='or'):
+        packages = []
+
+        if "name" in specs:
+            name_to_search = specs["name"][0]
+            repo = self.application.repos.find(name_to_search)
+            if repo is not None:
+                try:
+                    versions = await repo.list_versions(True)
+                except GitRepositoryError as e:
+                    pass
+                else:
+                    ordering = 0
+                    for version in versions:
+                        packages.append({
+                            "_pypi_ordering": ordering,
+                            "name": name_to_search,
+                            "version": version,
+                            "summary": version
+                        })
+                        ordering += 1
+
+        return packages,
+
+    async def post(self):
+        try:
+            params, method_name = rpc_loads(self.request.body.decode())
+        except (KeyError, ValueError):
+            raise HTTPError(400, "Bad XML")
+
+        method = getattr(self, "call_{0}".format(method_name), None)
+
+        if method is None:
+            raise HTTPError(400, "No such method")
+
+        try:
+            result = await method(*params)
+        except Exception as e:
+            raise HTTPError(400, str(e))
+        else:
+            self.write(rpc_dumps(result, method_name, methodresponse=True))
 
 
 class PackageHandler(RequestHandler):
