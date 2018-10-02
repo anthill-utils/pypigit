@@ -11,6 +11,7 @@ import yaml
 import re
 import json
 import logging
+import sys
 
 from shutil import copyfile, rmtree
 from tempfile import TemporaryDirectory
@@ -35,17 +36,6 @@ class GitRepositoryError(Exception):
     def __init__(self, code, message):
         self.code = code
         self.message = message
-
-
-python_path = "python"
-
-if "VIRTUAL_ENV" in os.environ:
-    virtual_env = os.environ["VIRTUAL_ENV"]
-    if os.path.isdir(virtual_env):
-        for test in ["{0}/bin/python", "{0}/Scripts/python.exe"]:
-            if os.path.isfile(test.format(virtual_env)):
-                python_path = test.format(virtual_env)
-                break
 
 
 class GitRepository(object):
@@ -193,7 +183,7 @@ class GitRepository(object):
                 env = os.environ.copy()
                 env["PYPIGIT_VERSION"] = original_version
 
-                p = run("{0} setup.py --version".format(python_path), stdout=PIPE, shell=True, cwd=build, env=env)
+                p = run("{0} setup.py --version".format(sys.executable), stdout=PIPE, shell=True, cwd=build, env=env)
 
                 if p.returncode != 0:
                     raise GitRepositoryError(400, "Package {0} of {1} has failed to provide version".format(
@@ -206,7 +196,7 @@ class GitRepository(object):
                         repo_name, package_version, py_version
                     ))
 
-                p = run("{0} setup.py sdist".format(python_path), stdout=PIPE, shell=True, cwd=build, env=env)
+                p = run("{0} setup.py sdist".format(sys.executable), stdout=PIPE, shell=True, cwd=build, env=env)
 
                 if p.returncode != 0:
                     raise GitRepositoryError(400, "Package {0} of {1} build has failed with error code {2}".format(
