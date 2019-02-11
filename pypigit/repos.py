@@ -46,11 +46,13 @@ class GitRepository(object):
 
         if isinstance(settings, str):
             url = settings
+            name = None
             self.private_key = None
         elif isinstance(settings, dict):
             url = settings.get("url", None)
             if url is None:
                 raise RuntimeError("Repo is an object but has no `url` property")
+            name = settings.get("name", None)
             self.private_key = settings.get("ssh_key", default_private_key)
         else:
             raise RuntimeError("Repo should be a string or a object")
@@ -59,6 +61,7 @@ class GitRepository(object):
         self.parsed_url = giturlparse.parse(url)
         if not self.parsed_url.valid:
             raise RuntimeError("Repo {0} is not valid".format(url))
+        self._name = name or self.parsed_url.repo
         self.cache_directory = os.path.join(cache_directory, self.name())
         self.cache_public_url = public_url + "/cache/" + self.name()
         self.public_url = public_url
@@ -155,7 +158,8 @@ class GitRepository(object):
                                   (version_info.group(3) or '') + (version_info.group(4) or '') + "dev0"
                 cache = False
 
-        repo_name = self.name()
+        repo_name = self.parsed_url.repo
+        package_name = self.name()
         tar_name = self.package_tar(original_version)
 
         if cache:
@@ -180,9 +184,9 @@ class GitRepository(object):
             try:
                 with PrivateSSHKeyContext(ssh_private_key=self.private_key) as ssh_private_key_filename:
                     with git_ssh_environment(g, ssh_private_key_filename=ssh_private_key_filename):
-                        g.clone(self.repo_url, branch=package_version, depth=1)
+                        g.clone(self.repo_url, package_name, branch=package_version, depth=1)
 
-                build = os.path.join(temp_dir, repo_name)
+                build = os.path.join(temp_dir, package_name)
 
                 env = os.environ.copy()
                 env["PYPIGIT_VERSION"] = original_version
@@ -191,25 +195,25 @@ class GitRepository(object):
 
                 if p.returncode != 0:
                     raise GitRepositoryError(400, "Package {0} of {1} has failed to provide version".format(
-                        repo_name, original_version
+                        package_name, original_version
                     ))
 
                 py_version = p.stdout.decode().splitlines()[-1]
                 if py_version != original_version:
                     raise GitRepositoryError(400, "Package {0} of tag {1} contains version {2} instead".format(
-                        repo_name, package_version, py_version
+                        package_name, package_version, py_version
                     ))
 
                 p = run("{0} setup.py sdist".format(sys.executable), stdout=PIPE, shell=True, cwd=build, env=env)
 
                 if p.returncode != 0:
                     raise GitRepositoryError(400, "Package {0} of {1} build has failed with error code {2}".format(
-                        repo_name, original_version, p.returncode
+                        package_name, original_version, p.returncode
                     ))
 
                 if not os.path.isfile(os.path.join(build, "dist", tar_name)):
                     raise GitRepositoryError(400, "Package {0} of version {1} did not produce dist {2}".format(
-                        repo_name, original_version, tar_name
+                        package_name, original_version, tar_name
                     ))
 
                 if cache:
@@ -226,7 +230,7 @@ class GitRepository(object):
             raise CacheRedirectException(cache_url)
 
     def name(self):
-        return self.parsed_url.repo
+        return self._name
 
 
 class GitRepositories(object):

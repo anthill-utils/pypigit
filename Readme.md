@@ -33,6 +33,15 @@ pip install --extra-index-url http://localhost:9498/simple <repo>==1.0.2
 It will automatically build a package from tag `1.0.2`, and deliver it to pip. Once
 built, it will be stored in `--cache-direcory` so consecutive calls will take no time.
 
+Optionally, you can specify package name in case you have repository name wrong:
+```yaml
+repositories:
+  - url: https://github.com/<author>/company-<repo>.git
+    name: <package-name>
+  - url: https://github.com/<author>/company-<repo>.git
+    name: <package-name>
+```
+
 SSH
 ---
 
