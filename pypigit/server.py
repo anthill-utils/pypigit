@@ -27,7 +27,7 @@ class PyPiGITServer(Application):
 
         self.repos = GitRepositories(options.repos, options.cache_directory, options.public_url)
 
-        logging.info("Serving on {0}".format(options.public_url))
+        logging.info("Serving on {0}/simple".format(options.public_url))
 
 
 def make_app():
